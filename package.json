@@ -1,5 +1,5 @@
 {
-  "name": "communal-board-games",
+  "name": "intel-games",
   "version": "1.0.0",
   "type": "module",
   "description": "Communal Multiplayer Board Games Platform: Standard Chess, Chinese Chess (Xiangqi), Go (Weiqi), and Shogi with real-time multiplayer, Google Docs-style collaborative strategy, time-travel move history, Stockfish analysis, and Firebase deployment.",
