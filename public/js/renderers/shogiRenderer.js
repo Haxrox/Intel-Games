@@ -11,7 +11,7 @@ export class ShogiRenderer {
     this.onMoveAttempt = options.onMoveAttempt || (() => {});
     this.onHoverSquare = options.onHoverSquare || (() => {});
     this.flipped = false;
-    this.autoOrient = true;
+    this.autoOrient = false;
     this.selectedCoord = null;
     this.selectedDropPiece = null;
     this.legalMoves = [];
@@ -39,21 +39,11 @@ export class ShogiRenderer {
   }
 
   render(state, currentTurn, myClientId = this.myClientId, myPlayerName = this.myPlayerName) {
-    if (!state || !this.container) return;
+    if (typeof document === 'undefined' || !state || !this.container) return;
     this.myClientId = myClientId || this.myClientId || '';
     this.myPlayerName = myPlayerName || this.myPlayerName || '';
 
-    if (this.autoOrient && !state.isPreview && !state.isHistorical) {
-      const lastMover = state && state.lastMover;
-      const iMovedLast = lastMover && (
-        (this.myClientId && lastMover.clientId === this.myClientId) ||
-        (this.myPlayerName && lastMover.name && lastMover.name.toLowerCase() === this.myPlayerName.trim().toLowerCase())
-      );
-      if (!iMovedLast) {
-        this.flipped = (currentTurn === 'gote');
-      }
-    }
-
+    this.container.classList.remove('xiangqi-aspect');
     this.container.innerHTML = '';
     const mainWrapper = document.createElement('div');
     mainWrapper.className = 'shogi-main-layout';
@@ -74,6 +64,7 @@ export class ShogiRenderer {
     // 9 rows x 9 cols
     const rows = this.flipped ? [8, 7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7, 8];
     const cols = this.flipped ? [8, 7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    const rankLetters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
 
     // Star points on Shogi board (cols 2, 5, rows 2, 5 in 0-indexed)
     const starPoints = new Set(['2,2', '5,2', '2,5', '5,5']);
@@ -84,7 +75,26 @@ export class ShogiRenderer {
         sqEl.className = 'shogi-square';
         sqEl.dataset.c = c;
         sqEl.dataset.r = r;
+        const fileNumber = 9 - c;
+        const sqName = `${fileNumber}${rankLetters[r]}`;
+        sqEl.title = sqName;
         const coordKey = `${c},${r}`;
+
+        // Rank coordinate indicator on the leftmost column (1-9)
+        if (c === cols[0]) {
+          const rankLabel = document.createElement('span');
+          rankLabel.className = 'board-coord board-coord-rank shogi-coord';
+          rankLabel.textContent = `${r + 1}`;
+          sqEl.appendChild(rankLabel);
+        }
+
+        // File coordinate indicator on the bottom row (9-1)
+        if (r === rows[8]) {
+          const fileLabel = document.createElement('span');
+          fileLabel.className = 'board-coord board-coord-file shogi-coord';
+          fileLabel.textContent = `${fileNumber}`;
+          sqEl.appendChild(fileLabel);
+        }
 
         if (starPoints.has(coordKey)) {
           const star = document.createElement('div');

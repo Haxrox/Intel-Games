@@ -22,11 +22,23 @@
           ".read": true,
           ".write": true
         },
+        "preview": {
+          ".read": true,
+          ".write": true
+        },
+        "archives": {
+          ".read": true,
+          ".write": true
+        },
         "chat": {
           ".read": true,
           ".write": true
         }
       }
+    },
+    "game_history": {
+      ".read": true,
+      ".write": true
     },
     "archive": {
       ".read": true,

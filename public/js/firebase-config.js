@@ -75,6 +75,16 @@ class RealtimeSyncClient {
             });
             this.storage[presencePath] = presMap;
             this.emit(presencePath, presMap);
+          } else if (msg.type === 'archives_update') {
+            const archPath = `rooms/${msg.roomId}/archives`;
+            const archMap = {};
+            (msg.archives || []).forEach(a => {
+              if (a && a.id) archMap[a.id] = a;
+            });
+            this.storage[archPath] = archMap;
+            this.emit(archPath, archMap);
+            this.storage['game_history'] = archMap;
+            this.emit('game_history', archMap);
           }
         } catch (e) {}
       };
@@ -154,6 +164,21 @@ class RealtimeSyncClient {
               type: 'set_planning',
               roomId: matchPlanning[1],
               clientId: myCId,
+              data: val
+            }));
+          } else if (cleanPath.startsWith('rooms/') && cleanPath.includes('/archives')) {
+            const matchArch = cleanPath.match(/^rooms\/([^\/]+)\/archives/);
+            if (matchArch) {
+              self.ws.send(JSON.stringify({
+                type: 'save_archive',
+                roomId: matchArch[1],
+                data: val
+              }));
+            }
+          } else if (cleanPath.startsWith('game_history')) {
+            self.ws.send(JSON.stringify({
+              type: 'save_archive',
+              roomId: (val && val.roomId) || 'main-chess-room',
               data: val
             }));
           }

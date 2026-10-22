@@ -47,98 +47,81 @@ test('Communal Anti-Consecutive Move Rule Enforcement', (t) => {
   assert.strictEqual(move3_alice.success, true, 'Alice can move again after Bob took an intervening turn');
 });
 
-test('Board Auto-Flip Consistency Logic', (t) => {
-  // Simulate board orientation helper logic used across renderers
-  function computeBoardFlipped(state, currentTurn, myClientId, myPlayerName, currentFlipped, autoOrient = true) {
-    if (!autoOrient) return currentFlipped;
-    const lastMover = state && state.lastMover;
-    const iMovedLast = lastMover && (
-      (myClientId && lastMover.clientId === myClientId) ||
-      (myPlayerName && lastMover.name && lastMover.name.toLowerCase() === myPlayerName.trim().toLowerCase())
-    );
-    if (!iMovedLast) {
-      return (currentTurn === 'b');
-    }
-    return currentFlipped; // Consistent perspective
+test('Board Orientation: Initial Room Join places current moving side on bottom', (t) => {
+  function getInitialJoinOrientation(state) {
+    if (!state || !state.turn) return false;
+    const isBlackTurn = (state.turn === 'b' || state.turn === 'black' || state.turn === 'gote');
+    return isBlackTurn;
   }
 
-  // Initial state: White to move, board is unflipped (White at bottom)
-  let state = {
-    turn: 'w',
-    lastMover: null
-  };
+  // 1. Chess room where it is White's turn -> White on bottom (flipped = false)
+  const chessWhiteState = { turn: 'w' };
+  assert.strictEqual(getInitialJoinOrientation(chessWhiteState), false, 'White turn: White is on bottom');
 
-  const aliceClientId = 'client_alice';
-  const bobClientId = 'client_bob';
+  // 2. Chess room where it is Black's turn -> Black on bottom (flipped = true)
+  const chessBlackState = { turn: 'b' };
+  assert.strictEqual(getInitialJoinOrientation(chessBlackState), true, 'Black turn: Black is on bottom');
 
-  let aliceFlipped = false;
-  let bobFlipped = false;
+  // 3. Xiangqi room where it is Red's turn -> Red on bottom (flipped = false)
+  const xiangqiRedState = { turn: 'red' };
+  assert.strictEqual(getInitialJoinOrientation(xiangqiRedState), false, 'Xiangqi Red turn: Red is on bottom');
 
-  // 1. Initial orientation:
-  aliceFlipped = computeBoardFlipped(state, 'w', aliceClientId, 'Alice', aliceFlipped);
-  bobFlipped = computeBoardFlipped(state, 'w', bobClientId, 'Bob', bobFlipped);
-  assert.strictEqual(aliceFlipped, false, 'Alice should initially see White at bottom');
-  assert.strictEqual(bobFlipped, false, 'Bob should initially see White at bottom');
+  // 4. Xiangqi room where it is Black's turn -> Black on bottom (flipped = true)
+  const xiangqiBlackState = { turn: 'black' };
+  assert.strictEqual(getInitialJoinOrientation(xiangqiBlackState), true, 'Xiangqi Black turn: Black is on bottom');
 
-  // 2. Alice makes White move e4 -> Turn is now 'b' (Black)
-  state = {
-    turn: 'b',
-    lastMover: { clientId: aliceClientId, name: 'Alice' }
-  };
+  // 5. Shogi room where it is Sente's turn -> Sente on bottom (flipped = false)
+  const shogiSenteState = { turn: 'sente' };
+  assert.strictEqual(getInitialJoinOrientation(shogiSenteState), false, 'Shogi Sente turn: Sente is on bottom');
 
-  // Alice's board MUST NOT auto-flip because Alice just made the move!
-  aliceFlipped = computeBoardFlipped(state, 'b', aliceClientId, 'Alice', aliceFlipped);
-  assert.strictEqual(aliceFlipped, false, 'CRITICAL: Alice board must NOT auto-flip after Alice moved!');
-
-  // Bob did NOT make the move, so Bob auto-orients to Black's perspective
-  bobFlipped = computeBoardFlipped(state, 'b', bobClientId, 'Bob', bobFlipped);
-  assert.strictEqual(bobFlipped, true, 'Bob auto-orients to Black to play next move');
-
-  // 3. Bob makes Black move e5 -> Turn is now 'w' (White)
-  state = {
-    turn: 'w',
-    lastMover: { clientId: bobClientId, name: 'Bob' }
-  };
-
-  // Bob's board MUST NOT auto-flip because Bob just made the move!
-  bobFlipped = computeBoardFlipped(state, 'w', bobClientId, 'Bob', bobFlipped);
-  assert.strictEqual(bobFlipped, true, 'CRITICAL: Bob board must NOT auto-flip after Bob moved!');
-
-  // Alice did NOT make this move, so Alice orients to White to play next move
-  aliceFlipped = computeBoardFlipped(state, 'w', aliceClientId, 'Alice', aliceFlipped);
-  assert.strictEqual(aliceFlipped, false, 'Alice orients to White ready for next move');
+  // 6. Shogi room where it is Gote's turn -> Gote on bottom (flipped = true)
+  const shogiGoteState = { turn: 'gote' };
+  assert.strictEqual(getInitialJoinOrientation(shogiGoteState), true, 'Shogi Gote turn: Gote is on bottom');
 });
 
-test('Board Auto-Flip Consistency: No Auto-Flip during Preview or History Preview', (t) => {
-  function computeBoardFlipped(state, currentTurn, myClientId, myPlayerName, currentFlipped, autoOrient = true) {
-    if (!autoOrient) return currentFlipped;
-    // Don't autoflip the board for move previews or historical previews!
-    if (state && (state.isPreview || state.isHistorical)) {
-      return currentFlipped;
+test('Board Orientation: No Auto-Rotate on subsequent moves, previews, or history', (t) => {
+  // Simulates App state machine orientation tracking
+  class OrientationTracker {
+    constructor() {
+      this.hasSetInitialOrientation = false;
+      this.flipped = false;
     }
-    const lastMover = state && state.lastMover;
-    const iMovedLast = lastMover && (
-      (myClientId && lastMover.clientId === myClientId) ||
-      (myPlayerName && lastMover.name && lastMover.name.toLowerCase() === myPlayerName.trim().toLowerCase())
-    );
-    if (!iMovedLast) {
-      return (currentTurn === 'b');
+
+    onRemoteState(state) {
+      if (!this.hasSetInitialOrientation && state && state.turn) {
+        this.hasSetInitialOrientation = true;
+        this.flipped = (state.turn === 'b' || state.turn === 'black' || state.turn === 'gote');
+      }
+      // Note: Subsequent remote moves NEVER auto-flip or mutate this.flipped!
     }
-    return currentFlipped;
+
+    toggleFlip() {
+      this.flipped = !this.flipped;
+    }
   }
 
-  // Bob is currently viewing White's perspective (unflipped)
-  let bobFlipped = false;
+  const tracker = new OrientationTracker();
 
-  // Bob starts previewing e4 -> next turn in preview is Black ('b')
-  const previewState = { isPreview: true, turn: 'b' };
-  bobFlipped = computeBoardFlipped(previewState, 'b', 'client_bob', 'Bob', bobFlipped);
-  assert.strictEqual(bobFlipped, false, 'CRITICAL: Board must NOT auto-flip for move previews!');
+  // 1. Player joins room when it is White's turn -> Flipped is false
+  tracker.onRemoteState({ turn: 'w', history: [] });
+  assert.strictEqual(tracker.flipped, false, 'Initial join at White turn -> White at bottom');
 
-  // Bob steps history back to ply 1 (turn 'b')
-  const historicalState = { isHistorical: true, turn: 'b', ply: 1 };
-  bobFlipped = computeBoardFlipped(historicalState, 'b', 'client_bob', 'Bob', bobFlipped);
-  assert.strictEqual(bobFlipped, false, 'CRITICAL: Board must NOT auto-flip during history preview!');
+  // 2. Move 1 (e4) played -> State updates to Black's turn ('b')
+  // Board MUST NOT auto-rotate! Perspective must remain stable.
+  tracker.onRemoteState({ turn: 'b', history: ['e4'] });
+  assert.strictEqual(tracker.flipped, false, 'Subsequent move by White must NOT auto-rotate board');
+
+  // 3. Move 2 (e5) played -> State updates to White's turn ('w')
+  tracker.onRemoteState({ turn: 'w', history: ['e4', 'e5'] });
+  assert.strictEqual(tracker.flipped, false, 'Subsequent move by Black must NOT auto-rotate board');
+
+  // 4. Manual flip button is pressed -> Perspective inverts
+  tracker.toggleFlip();
+  assert.strictEqual(tracker.flipped, true, 'Manual flip button successfully toggles orientation');
+
+  // 5. Next move played -> Stays flipped because auto-rotate is removed
+  tracker.onRemoteState({ turn: 'b', history: ['e4', 'e5', 'Nf3'] });
+  assert.strictEqual(tracker.flipped, true, 'Manual perspective choice is preserved across moves');
 });
 
 test('Local History Stepping: Step back game state locally without mutating live state', (t) => {
@@ -190,6 +173,136 @@ test('Local History Stepping: Step back game state locally without mutating live
   assert.strictEqual(remotePly0.board[6][4].type, 'p', 'Remote engine properly stepped back to ply 0');
   const remotePly1 = remoteEngine.getStateAtPly(1);
   assert.strictEqual(remotePly1.lastMove.to, 'e4', 'Remote engine properly stepped back to ply 1');
+});
+
+test('Resignation Rule: Resigning awards win to opponent and blocks subsequent moves', (t) => {
+  function processResignation(gameState, playerName, clientId, gameType = 'chess') {
+    if (!gameState || !gameState.history || gameState.history.length === 0) {
+      return { success: false, error: 'No moves played' };
+    }
+    if (gameState.status === 'checkmate' || gameState.status === 'game_over' || gameState.status === 'resigned') {
+      return { success: false, error: 'Game already ended' };
+    }
+
+    const turn = gameState.turn || 'w';
+    let resigningSide = 'White';
+    let winningSide = 'Black';
+    let winnerKey = 'b';
+
+    if (gameType === 'chess') {
+      if (turn === 'w') {
+        resigningSide = 'White';
+        winningSide = 'Black';
+        winnerKey = 'b';
+      } else {
+        resigningSide = 'Black';
+        winningSide = 'White';
+        winnerKey = 'w';
+      }
+    } else if (gameType === 'xiangqi') {
+      if (turn === 'red') {
+        resigningSide = 'Red';
+        winningSide = 'Black';
+        winnerKey = 'black';
+      } else {
+        resigningSide = 'Black';
+        winningSide = 'Red';
+        winnerKey = 'red';
+      }
+    } else if (gameType === 'shogi') {
+      if (turn === 'sente') {
+        resigningSide = 'Sente';
+        winningSide = 'Gote';
+        winnerKey = 'gote';
+      } else {
+        resigningSide = 'Gote';
+        winningSide = 'Sente';
+        winnerKey = 'sente';
+      }
+    }
+
+    const outcomeText = `${playerName} resigned for ${resigningSide}`;
+    return {
+      success: true,
+      newState: {
+        ...gameState,
+        status: 'resigned',
+        winner: winnerKey,
+        reason: outcomeText,
+        resignedBy: { name: playerName, clientId, side: resigningSide }
+      }
+    };
+  }
+
+  // 1. Resigning before any moves -> Rejected
+  const freshGame = { status: 'active', turn: 'w', history: [] };
+  const res0 = processResignation(freshGame, 'Lynx', 'c1', 'chess');
+  assert.strictEqual(res0.success, false, 'Cannot resign before any moves are made');
+
+  // 2. White to move resigns -> Black wins
+  const activeChess = { status: 'active', turn: 'w', history: [{ san: 'e4' }] };
+  const resWhite = processResignation(activeChess, 'Lynx', 'c1', 'chess');
+  assert.strictEqual(resWhite.success, true);
+  assert.strictEqual(resWhite.newState.status, 'resigned');
+  assert.strictEqual(resWhite.newState.winner, 'b', 'Opponent Black is awarded the win');
+  assert.strictEqual(resWhite.newState.resignedBy.side, 'White');
+  assert.strictEqual(resWhite.newState.reason, 'Lynx resigned for White');
+
+  // 3. Black to move resigns -> White wins
+  const blackTurnChess = { status: 'active', turn: 'b', history: [{ san: 'e4' }, { san: 'e5' }] };
+  const resBlack = processResignation(blackTurnChess, 'Wolf', 'c2', 'chess');
+  assert.strictEqual(resBlack.success, true);
+  assert.strictEqual(resBlack.newState.winner, 'w', 'Opponent White is awarded the win');
+  assert.strictEqual(resBlack.newState.reason, 'Wolf resigned for Black');
+
+  // 4. Moving after resignation is blocked
+  function attemptMoveOnState(state) {
+    if (state.status === 'resigned' || state.status === 'checkmate' || state.status === 'game_over') {
+      return { success: false, error: 'Game ended' };
+    }
+    return { success: true };
+  }
+  assert.strictEqual(attemptMoveOnState(resWhite.newState).success, false, 'Moves blocked after resignation');
+
+  // 5. Xiangqi: Red resigns -> Black wins
+  const activeXiangqi = { status: 'active', turn: 'red', history: [{ san: 'c3-c4' }] };
+  const resXq = processResignation(activeXiangqi, 'Falcon', 'c3', 'xiangqi');
+  assert.strictEqual(resXq.newState.winner, 'black');
+
+  // 6. Shogi: Sente resigns -> Gote wins
+  const activeShogi = { status: 'active', turn: 'sente', history: [{ san: '7g-7f' }] };
+  const resShogi = processResignation(activeShogi, 'Tiger', 'c4', 'shogi');
+  assert.strictEqual(resShogi.newState.winner, 'gote');
+});
+
+test('Theme Toggle: Dark and Light mode state switching', (t) => {
+  class ThemeManager {
+    constructor(initialTheme = 'dark') {
+      this.currentTheme = initialTheme;
+    }
+
+    toggleTheme() {
+      this.currentTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
+      return this.currentTheme;
+    }
+
+    getTheme() {
+      return this.currentTheme;
+    }
+  }
+
+  const tm = new ThemeManager('dark');
+  assert.strictEqual(tm.getTheme(), 'dark', 'Default theme should be dark');
+
+  // Switch to Light
+  const t1 = tm.toggleTheme();
+  assert.strictEqual(t1, 'light', 'Theme toggles to light');
+  assert.strictEqual(tm.getTheme(), 'light');
+
+  // Switch back to Dark
+  const t2 = tm.toggleTheme();
+  assert.strictEqual(t2, 'dark', 'Theme toggles back to dark');
+  assert.strictEqual(tm.getTheme(), 'dark');
 });
 
 

@@ -53,7 +53,10 @@
 
         <div class="action-btn-group">
           <button id="btnFlipBoard" class="btn-nav-action" title="Invert or Toggle Board Orientation">🔄 Flip</button>
+          <button id="btnToggleTheme" class="btn-nav-action" title="Toggle Dark/Light Mode">🌙 Theme</button>
           <button id="btnToggleMute" class="btn-nav-action" title="Mute/Unmute Audio">🔊 Sound</button>
+          <button id="btnSaveGame" class="btn-nav-action" title="Save Current Game to Archive">💾 Save</button>
+          <button id="btnResignGame" class="btn-nav-action btn-warning" title="Resign Current Game">🏳️ Resign</button>
           <button id="btnResetGame" class="btn-nav-action btn-danger" title="Start Fresh Game">⚡ Reset</button>
         </div>
       </div>
@@ -95,6 +98,7 @@
           <button class="tab-btn active" data-tab="tab-players">👥 Players</button>
           <button class="tab-btn" data-tab="tab-moves">📜 Move Sheet</button>
           <button class="tab-btn" data-tab="tab-analysis">📊 Review</button>
+          <button class="tab-btn" data-tab="tab-archives">🏆 Past Games</button>
         </div>
 
         <!-- Tab 1: Connected Players in Room -->
@@ -111,9 +115,14 @@
         <div id="tab-analysis" class="tab-content">
           <div id="analysisContainer">
             <div class="analysis-placeholder">
-              <p>🎯 Complete a game to view Stockfish move ratings, accuracy percentages, and brilliant tactical analysis.</p>
+              <p>🎯 Complete a game or select a past match to view Stockfish move ratings, accuracy percentages, and player analysis.</p>
             </div>
           </div>
+        </div>
+
+        <!-- Tab 4: Past Games Archive -->
+        <div id="tab-archives" class="tab-content">
+          <div id="pastGamesContainer"></div>
         </div>
       </aside>
     </main>

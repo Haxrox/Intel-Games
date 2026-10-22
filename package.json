@@ -5,7 +5,7 @@
   "description": "Communal Multiplayer Board Games Platform: Standard Chess, Chinese Chess (Xiangqi), Go (Weiqi), and Shogi with real-time multiplayer, Google Docs-style collaborative strategy, time-travel move history, Stockfish analysis, and Firebase deployment.",
   "main": "local-server/index.js",
   "scripts": {
-    "test": "node --test local-server/test/rules.test.js local-server/test/engines.test.js local-server/test/presence_and_previews.test.js",
+    "test": "node --test local-server/test/*.test.js",
     "start": "node local-server/index.js",
     "serve": "node server.js",
     "deploy": "firebase deploy --only hosting,database",

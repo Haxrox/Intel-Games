@@ -11,7 +11,7 @@ export class ChessRenderer {
     this.onMoveAttempt = options.onMoveAttempt || (() => {});
     this.onHoverSquare = options.onHoverSquare || (() => {});
     this.flipped = false;
-    this.autoOrient = true;
+    this.autoOrient = false;
     this.isPlanningMode = false;
     this.myClientId = '';
     this.myPlayerName = '';
@@ -49,23 +49,9 @@ export class ChessRenderer {
   }
 
   render(state, currentTurn, myClientId = this.myClientId, myPlayerName = this.myPlayerName) {
-    if (!state || !this.container) return;
+    if (typeof document === 'undefined' || !state || !this.container) return;
     this.myClientId = myClientId || this.myClientId || '';
     this.myPlayerName = myPlayerName || this.myPlayerName || '';
-
-    // Auto-flip orientation logic:
-    // The board should NOT auto-flip if I just made a move (it must remain consistent from my perspective).
-    // The board should NOT auto-flip during move previews or historical previews!
-    if (this.autoOrient && !state.isPreview && !state.isHistorical) {
-      const lastMover = state && state.lastMover;
-      const iMovedLast = lastMover && (
-        (this.myClientId && lastMover.clientId === this.myClientId) ||
-        (this.myPlayerName && lastMover.name && lastMover.name.toLowerCase() === this.myPlayerName.trim().toLowerCase())
-      );
-      if (!iMovedLast) {
-        this.flipped = (currentTurn === 'b');
-      }
-    }
 
     this.container.innerHTML = '';
     const boardEl = document.createElement('div');
@@ -89,6 +75,23 @@ export class ChessRenderer {
         const sqEl = document.createElement('div');
         sqEl.className = `board-square ${isDark ? 'dark' : 'light'}`;
         sqEl.dataset.square = sqName;
+        sqEl.title = sqName;
+
+        // Rank coordinate indicator on the leftmost column (1-8)
+        if (f === files[0]) {
+          const rankLabel = document.createElement('span');
+          rankLabel.className = 'board-coord board-coord-rank';
+          rankLabel.textContent = `${r + 1}`;
+          sqEl.appendChild(rankLabel);
+        }
+
+        // File coordinate indicator on the bottom row (a-h)
+        if (r === ranks[7]) {
+          const fileLabel = document.createElement('span');
+          fileLabel.className = 'board-coord board-coord-file';
+          fileLabel.textContent = fileLetters[f];
+          sqEl.appendChild(fileLabel);
+        }
 
         // Last move highlight
         if (state.lastMove && (state.lastMove.from === sqName || state.lastMove.to === sqName)) {

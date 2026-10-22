@@ -19,10 +19,11 @@ export class GoRenderer {
   }
 
   render(state, currentTurn, myClientId = '') {
-    if (!state || !this.container) return;
+    if (typeof document === 'undefined' || !state || !this.container) return;
 
     this.container.innerHTML = '';
     const size = state.size || 9;
+    const goLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'];
 
     const wrapper = document.createElement('div');
     wrapper.className = 'go-board-container';
@@ -62,7 +63,25 @@ export class GoRenderer {
         intersection.className = 'go-intersection';
         intersection.dataset.x = x;
         intersection.dataset.y = y;
+        const sqName = `${goLetters[x]}${size - y}`;
+        intersection.title = sqName;
         const coordKey = `${x},${y}`;
+
+        // Rank coordinate indicator on the leftmost column (1-9)
+        if (x === 0) {
+          const rankLabel = document.createElement('span');
+          rankLabel.className = 'board-coord board-coord-rank go-coord';
+          rankLabel.textContent = `${size - y}`;
+          intersection.appendChild(rankLabel);
+        }
+
+        // File coordinate indicator on the bottom row (A-J)
+        if (y === size - 1) {
+          const fileLabel = document.createElement('span');
+          fileLabel.className = 'board-coord board-coord-file go-coord';
+          fileLabel.textContent = goLetters[x];
+          intersection.appendChild(fileLabel);
+        }
 
         if (starPoints.has(coordKey)) {
           const star = document.createElement('div');

@@ -80,6 +80,7 @@ const wss = new WebSocketServer({ server });
 const roomStates = new Map();
 const roomPresences = new Map(); // roomId -> Map(clientId -> presence)
 const roomPreviews = new Map(); // roomId -> preview state (staged move variations)
+const roomArchives = new Map(); // roomId -> Map(gameId -> archive record)
 
 wss.on('connection', (ws) => {
   let subscribedRoom = null;
@@ -121,6 +122,31 @@ wss.on('connection', (ws) => {
             presences
           }));
         }
+
+        // Send room archives list
+        if (roomArchives.has(roomId)) {
+          const archives = Array.from(roomArchives.get(roomId).values());
+          ws.send(JSON.stringify({
+            type: 'archives_update',
+            roomId,
+            archives
+          }));
+        }
+      }
+
+      else if (type === 'save_archive') {
+        if (!roomArchives.has(roomId)) {
+          roomArchives.set(roomId, new Map());
+        }
+        if (data && data.id) {
+          roomArchives.get(roomId).set(data.id, data);
+        }
+        const archives = Array.from(roomArchives.get(roomId).values());
+        broadcastToRoom(roomId, {
+          type: 'archives_update',
+          roomId,
+          archives
+        });
       }
 
       else if (type === 'set_state') {
