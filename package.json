@@ -1,0 +1,37 @@
+{
+  "name": "communal-board-games",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Communal Multiplayer Board Games Platform: Standard Chess, Chinese Chess (Xiangqi), Go (Weiqi), and Shogi with real-time multiplayer, Google Docs-style collaborative strategy, time-travel move history, Stockfish analysis, and Firebase deployment.",
+  "main": "local-server/index.js",
+  "scripts": {
+    "test": "node --test local-server/test/rules.test.js local-server/test/engines.test.js local-server/test/presence_and_previews.test.js",
+    "start": "node local-server/index.js",
+    "serve": "node server.js",
+    "deploy": "firebase deploy --only hosting,database",
+    "deploy:hosting": "firebase deploy --only hosting"
+  },
+  "keywords": [
+    "chess",
+    "communal",
+    "multiplayer",
+    "xiangqi",
+    "go",
+    "shogi",
+    "stockfish",
+    "firebase"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chess.js": "^1.0.0-beta.6",
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^12.0.0",
+    "stockfish": "^16.0.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "firebase-tools": "^13.35.1",
+    "serve": "^14.2.1"
+  }
+}

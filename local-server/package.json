@@ -1,0 +1,17 @@
+{
+  "name": "communal-local-server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Local server engine for communal refereeing and Stockfish analysis",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "chess.js": "^1.0.0-beta.6",
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^12.0.0",
+    "stockfish": "^16.0.0"
+  }
+}

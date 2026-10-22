@@ -1,0 +1,36 @@
+{
+  "rules": {
+    ".read": true,
+    ".write": true,
+    "rooms": {
+      "$roomId": {
+        ".read": true,
+        ".write": true,
+        "presence": {
+          "$clientId": {
+            ".read": true,
+            ".write": true
+          }
+        },
+        "strategy": {
+          "$clientId": {
+            ".read": true,
+            ".write": true
+          }
+        },
+        "state": {
+          ".read": true,
+          ".write": true
+        },
+        "chat": {
+          ".read": true,
+          ".write": true
+        }
+      }
+    },
+    "archive": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}

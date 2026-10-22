@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Intel Games — Communal Multiplayer Arena (Chess, Xiangqi, Go & Shogi)</title>
+  <meta name="description" content="Communal multiplayer board game arena inspired by the Intel office breakroom board. Featuring Standard Chess, Chinese Chess (Xiangqi), Go (Weiqi), and Shogi with strict turn alternation, collaborative strategy, and Stockfish analysis.">
+  
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Serif+JP:wght@700&family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- Firebase App & Realtime Database SDKs (Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
+  <!-- Chess.js dependency (bundled via CDN for browser runtime) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Navbar -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 45 45" width="28" height="28" fill="#38bdf8">
+            <path d="M22.5 11.63V6M20 8h5M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" stroke="#38bdf8" stroke-width="2"/>
+            <path d="M11.5 37c5.5 3.5 16.5 3.5 22 0 1-5.5-3-11.5-3-11.5-6 3.5-10 3.5-16 0 0 0-4 6-3 11.5z" fill="#38bdf8"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Intel Games</h1>
+          <span class="sub-badge">Communal Arena</span>
+        </div>
+      </div>
+
+      <!-- Room Selection & Controls -->
+      <div class="header-controls">
+        <div class="room-selector-group">
+          <label for="selectActiveRoom">Room:</label>
+          <select id="selectActiveRoom" class="room-select">
+            <option value="main-chess-room:chess">Main Hall (CHESS)</option>
+            <option value="grand-xiangqi:xiangqi">Pavilion (XIANGQI)</option>
+            <option value="zen-go-9x9:go">Zen Garden (GO 9x9)</option>
+            <option value="dojo-shogi:shogi">Dojo (SHOGI)</option>
+          </select>
+          <button id="btnCreateRoom" class="btn-create-room" title="Create New Communal Room">+ Room</button>
+        </div>
+
+        <div class="action-btn-group">
+          <button id="btnFlipBoard" class="btn-nav-action" title="Invert or Toggle Board Orientation">🔄 Flip</button>
+          <button id="btnToggleMute" class="btn-nav-action" title="Mute/Unmute Audio">🔊 Sound</button>
+          <button id="btnResetGame" class="btn-nav-action btn-danger" title="Start Fresh Game">⚡ Reset</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Player Identity & Communal Turn Status Bar -->
+    <section class="identity-status-bar">
+      <div class="player-identity-card">
+        <span class="avatar-circle">👤</span>
+        <div class="name-edit-box">
+          <label for="inputPlayerName">Playing As:</label>
+          <input type="text" id="inputPlayerName" placeholder="e.g. Lynx, Wolf" maxlength="18">
+        </div>
+      </div>
+
+      <div id="communalStatusBanner" class="status-banner banner-ready">
+        🟢 <strong>Your Turn!</strong> Make a move for White.
+      </div>
+    </section>
+
+    <!-- Main Game Arena -->
+    <main class="arena-grid">
+      <!-- Left / Center: Board Stage -->
+      <section class="board-stage">
+        <!-- Floating Time-Travel Banner (Shown when inspecting past moves) -->
+        <div id="historyPreviewBanner" class="history-preview-banner"></div>
+
+        <!-- Floating Move Confirmation & Staged Preview Bar -->
+        <div id="confirmMoveBar" class="confirm-move-bar"></div>
+
+        <!-- Dynamic Game Board Container -->
+        <div id="gameBoardContainer" class="game-board-container"></div>
+      </section>
+
+      <!-- Right: Interactive Panels & Playerlist -->
+      <aside class="sidebar-stage">
+        <!-- Tab Navigation -->
+        <div class="sidebar-tabs">
+          <button class="tab-btn active" data-tab="tab-players">👥 Players</button>
+          <button class="tab-btn" data-tab="tab-moves">📜 Move Sheet</button>
+          <button class="tab-btn" data-tab="tab-analysis">📊 Review</button>
+        </div>
+
+        <!-- Tab 1: Connected Players in Room -->
+        <div id="tab-players" class="tab-content active">
+          <div id="playerListContainer"></div>
+        </div>
+
+        <!-- Tab 2: Chronological Move Sheet -->
+        <div id="tab-moves" class="tab-content">
+          <div id="historyTableContainer"></div>
+        </div>
+
+        <!-- Tab 3: Post-Game Stockfish Analysis -->
+        <div id="tab-analysis" class="tab-content">
+          <div id="analysisContainer">
+            <div class="analysis-placeholder">
+              <p>🎯 Complete a game to view Stockfish move ratings, accuracy percentages, and brilliant tactical analysis.</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Tab Switching Script -->
+  <script>
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        const target = document.getElementById(btn.dataset.tab);
+        if (target) target.classList.add('active');
+      });
+    });
+  </script>
+
+  <!-- Modular App Scripts -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
