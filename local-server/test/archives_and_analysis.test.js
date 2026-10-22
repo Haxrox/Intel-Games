@@ -61,12 +61,19 @@ class MockElement {
   scrollIntoView() {}
 }
 
+if (typeof globalThis.document === 'undefined') {
+  globalThis.document = {
+    createElement: (tag) => new MockElement(tag)
+  };
+}
+
 // Minimal mock DB ref
 function createMockDb() {
   const store = {};
   const listeners = {};
   return {
     store,
+    listeners,
     ref: (path) => ({
       set: async (val) => {
         store[path] = val;
@@ -76,6 +83,11 @@ function createMockDb() {
         if (!listeners[path]) listeners[path] = [];
         listeners[path].push(cb);
         cb({ val: () => store[path] || null });
+      },
+      off: (event, cb) => {
+        if (!listeners[path]) return;
+        if (!cb) listeners[path] = [];
+        else listeners[path] = listeners[path].filter(fn => fn !== cb);
       }
     })
   };
@@ -116,6 +128,86 @@ test('Past Game Archival: Storing game histories with player attribution in data
   assert.strictEqual(pastGames[0].id, saved.id);
   assert.strictEqual(pastGames[0].players.white.join(', '), 'Lynx, Falcon');
   assert.strictEqual(pastGames[0].players.black.join(', '), 'Wolf, Tiger');
+});
+
+test('Past Game Archival: Archive Deduplication ensures games never appear twice', async () => {
+  const mockDb = createMockDb();
+  const archiveMgr = new GameArchiveManager(mockDb, 'main-chess-room');
+
+  const history = [
+    { ply: 1, san: 'e4', from: 'e2', to: 'e4', color: 'w', piece: 'p', playerName: 'Lynx', clientId: 'c1', timestamp: 1000 },
+    { ply: 2, san: 'e5', from: 'e7', to: 'e5', color: 'b', piece: 'p', playerName: 'Wolf', clientId: 'c2', timestamp: 2000 }
+  ];
+
+  // 1. Simulate saving game on resignation, then auto-archive receiving the completed state
+  const save1 = await archiveMgr.saveGame({
+    roomId: 'main-chess-room',
+    gameType: 'chess',
+    status: 'resigned',
+    winner: 'b',
+    reason: 'Lynx resigned for White',
+    history
+  });
+
+  const save2 = await archiveMgr.saveGame({
+    roomId: 'main-chess-room',
+    gameType: 'chess',
+    status: 'resigned',
+    winner: 'b',
+    reason: 'White resigned',
+    history
+  });
+
+  assert.strictEqual(save1.id, save2.id, 'Deterministic ID must match for the same game match');
+  assert.strictEqual(archiveMgr.getPastGames().length, 1, 'Only 1 record should exist after duplicate save calls');
+
+  // 2. Simulate injecting legacy duplicate entries with distinct IDs into archives
+  archiveMgr.archives = [
+    {
+      id: 'game_legacy_duplicate_1',
+      roomId: 'main-chess-room',
+      gameType: 'chess',
+      status: 'completed',
+      winner: 'b',
+      reason: 'Completed before Reset',
+      history,
+      completedAt: 100000
+    },
+    {
+      id: 'game_legacy_duplicate_2',
+      roomId: 'main-chess-room',
+      gameType: 'chess',
+      status: 'resigned',
+      winner: 'b',
+      reason: 'Checkmate',
+      history,
+      completedAt: 100050
+    }
+  ];
+
+  const pastGames = archiveMgr.getPastGames();
+  assert.strictEqual(pastGames.length, 1, 'Deduplication must collapse multiple records of the same game to 1');
+  assert.strictEqual(pastGames[0].reason, 'Checkmate', 'Preferred more descriptive reason');
+
+  // 3. Test rendering into container only produces 1 card
+  const container = new MockElement('div');
+  archiveMgr.renderArchiveList(container);
+  assert.strictEqual(container.children.length, 1, 'Wrapper must be appended');
+  const wrapper = container.children[0];
+  assert.strictEqual(wrapper.children.length, 1, 'Exactly 1 archive card must be rendered in wrapper');
+});
+
+test('Past Game Archival: Room switching cleanly detaches previous database listeners', () => {
+  const mockDb = createMockDb();
+  const archiveMgr = new GameArchiveManager(mockDb, 'room-a');
+  archiveMgr.setRoom('room-a');
+
+  assert.strictEqual(mockDb.listeners['rooms/room-a/archives'].length, 1);
+
+  // Switch to room-b
+  archiveMgr.setRoom('room-b');
+  assert.strictEqual(mockDb.listeners['rooms/room-a/archives'].length, 0, 'room-a listener must be removed');
+  assert.strictEqual(mockDb.listeners['rooms/room-b/archives'].length, 1, 'room-b listener must be active');
 });
 
 test('Past Game Replay: HistoryController supports past game replay without mutating live state', () => {

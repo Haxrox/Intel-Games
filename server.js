@@ -82,6 +82,40 @@ const roomPresences = new Map(); // roomId -> Map(clientId -> presence)
 const roomPreviews = new Map(); // roomId -> preview state (staged move variations)
 const roomArchives = new Map(); // roomId -> Map(gameId -> archive record)
 
+// Archive fingerprinting and deduplication helpers
+function getGameFingerprint(game) {
+  if (!game) return '';
+  const roomId = game.roomId || 'default';
+  const gameType = game.gameType || 'chess';
+  const history = game.history || [];
+  const moveCount = history.length;
+  if (moveCount === 0) return game.id || '';
+  const firstMoveTs = (history[0] && history[0].timestamp) ? history[0].timestamp : '';
+  const moveSignature = history.map(m => `${m.from || ''}${m.to || ''}${m.san || ''}`).join('-');
+  return `${roomId}:${gameType}:${moveCount}:${firstMoveTs}:${moveSignature}`;
+}
+
+function deduplicateArchivesList(list) {
+  if (!Array.isArray(list)) return [];
+  const fpMap = new Map();
+  for (const item of list) {
+    if (!item) continue;
+    const fp = getGameFingerprint(item);
+    if (!fp) continue;
+    if (!fpMap.has(fp)) {
+      fpMap.set(fp, item);
+    } else {
+      const existing = fpMap.get(fp);
+      const isBetterReason = (existing.reason === 'Completed before Reset' || existing.reason === 'Manual Save') &&
+                             (item.reason && item.reason !== 'Completed before Reset' && item.reason !== 'Manual Save');
+      if (isBetterReason) {
+        fpMap.set(fp, { ...existing, ...item, id: existing.id || item.id });
+      }
+    }
+  }
+  return Array.from(fpMap.values()).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+}
+
 wss.on('connection', (ws) => {
   let subscribedRoom = null;
   let clientIdentifier = null;
@@ -125,7 +159,7 @@ wss.on('connection', (ws) => {
 
         // Send room archives list
         if (roomArchives.has(roomId)) {
-          const archives = Array.from(roomArchives.get(roomId).values());
+          const archives = deduplicateArchivesList(Array.from(roomArchives.get(roomId).values()));
           ws.send(JSON.stringify({
             type: 'archives_update',
             roomId,
@@ -139,9 +173,17 @@ wss.on('connection', (ws) => {
           roomArchives.set(roomId, new Map());
         }
         if (data && data.id) {
-          roomArchives.get(roomId).set(data.id, data);
+          const roomMap = roomArchives.get(roomId);
+          const dataFp = getGameFingerprint(data);
+          // Purge any existing entry that matches this game's fingerprint under a different id
+          for (const [existingId, existingRec] of roomMap.entries()) {
+            if (existingId !== data.id && getGameFingerprint(existingRec) === dataFp) {
+              roomMap.delete(existingId);
+            }
+          }
+          roomMap.set(data.id, data);
         }
-        const archives = Array.from(roomArchives.get(roomId).values());
+        const archives = deduplicateArchivesList(Array.from(roomArchives.get(roomId).values()));
         broadcastToRoom(roomId, {
           type: 'archives_update',
           roomId,

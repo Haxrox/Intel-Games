@@ -175,12 +175,6 @@ class RealtimeSyncClient {
                 data: val
               }));
             }
-          } else if (cleanPath.startsWith('game_history')) {
-            self.ws.send(JSON.stringify({
-              type: 'save_archive',
-              roomId: (val && val.roomId) || 'main-chess-room',
-              data: val
-            }));
           }
         }
 
@@ -222,6 +216,15 @@ class RealtimeSyncClient {
           }
         }
         cb({ val: () => currentVal || null });
+      },
+
+      off: (event, cb) => {
+        if (!self.listeners[cleanPath]) return;
+        if (!cb) {
+          self.listeners[cleanPath] = [];
+        } else {
+          self.listeners[cleanPath] = self.listeners[cleanPath].filter(fn => fn !== cb);
+        }
       },
 
       onDisconnect: () => ({

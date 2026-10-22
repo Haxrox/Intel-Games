@@ -58,6 +58,9 @@ export class CommunalApp {
 
     // Tracks whether initial board orientation has been aligned to the moving side on room join
     this.hasSetInitialOrientation = false;
+
+    // Track archived matches to prevent duplicate auto-archive dispatches
+    this.archivedMatchSignatures = new Set();
   }
 
   getOrCreateClientId() {
@@ -305,9 +308,11 @@ export class CommunalApp {
       return;
     }
 
-    // Auto-archive completed games
+    // Auto-archive completed games (deduplicated by match signature)
     if (state.status === 'checkmate' || state.status === 'stalemate' || state.status === 'draw' || state.status === 'game_over' || state.status === 'resigned') {
-      if (state.history && state.history.length >= 1 && !state._isArchived) {
+      const sig = this.getMatchSignature(state);
+      if (sig && state.history && state.history.length >= 1 && !this.archivedMatchSignatures.has(sig)) {
+        this.archivedMatchSignatures.add(sig);
         state._isArchived = true;
         const outcome = state.reason || (state.status === 'checkmate' ? 'Checkmate' : (state.status === 'resigned' ? 'Resignation' : 'Draw'));
         this.archiveCurrentGame(outcome);
@@ -738,8 +743,20 @@ export class CommunalApp {
     });
   }
 
+  getMatchSignature(state) {
+    if (!state || !state.history || state.history.length === 0) return null;
+    const roomId = this.currentRoomId || 'main';
+    const gameType = this.gameType || 'chess';
+    const count = state.history.length;
+    const firstMoveTs = (state.history[0] && state.history[0].timestamp) ? state.history[0].timestamp : '';
+    const moves = state.history.map(m => `${m.from || ''}${m.to || ''}${m.san || ''}`).join('-');
+    return `${roomId}:${gameType}:${count}:${firstMoveTs}:${moves}`;
+  }
+
   async archiveCurrentGame(reason = 'Game Completed') {
     if (!this.gameState || !this.gameState.history || this.gameState.history.length === 0) return null;
+    const sig = this.getMatchSignature(this.gameState);
+    if (sig) this.archivedMatchSignatures.add(sig);
     return await this.archiveMgr.saveGame({
       roomId: this.currentRoomId,
       gameType: this.gameType,
@@ -803,7 +820,11 @@ export class CommunalApp {
     if (!this.engine) return;
     this.hasSetInitialOrientation = false;
     if (this.gameState && this.gameState.history && this.gameState.history.length >= 2) {
-      await this.archiveCurrentGame('Completed before Reset');
+      const sig = this.getMatchSignature(this.gameState);
+      if (sig && !this.archivedMatchSignatures.has(sig)) {
+        this.archivedMatchSignatures.add(sig);
+        await this.archiveCurrentGame('Completed before Reset');
+      }
     }
     const fresh = this.engine.init();
     const stateRef = this.db.ref(`rooms/${this.currentRoomId}/state`);
@@ -906,6 +927,10 @@ export class CommunalApp {
     if (!confirmResign) return;
 
     const outcomeText = `${this.playerName} resigned for ${resigningSide}`;
+
+    // Mark match signature early so applyRemoteState won't double-archive
+    const sig = this.getMatchSignature(this.gameState);
+    if (sig) this.archivedMatchSignatures.add(sig);
 
     // Update Firebase RTDB room state
     const stateRef = this.db.ref(`rooms/${this.currentRoomId}/state`);

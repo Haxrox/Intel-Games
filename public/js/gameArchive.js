@@ -4,20 +4,96 @@
  * and localStorage, synchronizes room archives, and renders interactive past games cards.
  */
 
+/**
+ * Computes a unique, deterministic fingerprint for a game match based on its
+ * room, game type, ply count, starting timestamp (if recorded), and move sequence.
+ */
+export function getGameFingerprint(record) {
+  if (!record) return '';
+  const roomId = record.roomId || 'room';
+  const gameType = record.gameType || 'chess';
+  const history = record.history || [];
+  const moveCount = history.length;
+  if (moveCount === 0) {
+    return record.id || `empty_${roomId}_${record.completedAt || 0}`;
+  }
+  const firstMoveTs = (history[0] && history[0].timestamp) ? history[0].timestamp : '';
+  const moveSequence = history.map(m => `${m.from || ''}${m.to || ''}${m.san || ''}`).join('-');
+  return `${roomId}:${gameType}:${moveCount}:${firstMoveTs}:${moveSequence}`;
+}
+
+/**
+ * Generates a deterministic match ID from the game's contents so that multiple
+ * clients or repeated archive calls produce the exact same ID.
+ */
+export function generateDeterministicId(record) {
+  if (record && record.id) return record.id;
+  const history = (record && record.history) || [];
+  const roomId = (record && record.roomId) || 'room';
+  const gameType = (record && record.gameType) || 'chess';
+  const moveCount = history.length;
+  const firstMoveTs = (history[0] && history[0].timestamp) ? history[0].timestamp : '';
+  const moveSequence = history.map(m => `${m.from || ''}${m.to || ''}${m.san || ''}`).join('-');
+  const rawKey = `${roomId}_${gameType}_${moveCount}_${firstMoveTs}_${moveSequence}`;
+
+  let hash = 0;
+  for (let i = 0; i < rawKey.length; i++) {
+    hash = ((hash << 5) - hash) + rawKey.charCodeAt(i);
+    hash |= 0;
+  }
+  const hashStr = Math.abs(hash).toString(36);
+  return `game_${gameType}_${moveCount}m_${hashStr}`;
+}
+
 export class GameArchiveManager {
   constructor(db, currentRoomId) {
     this.db = db;
     this.currentRoomId = currentRoomId;
     this.archives = [];
     this.listeners = [];
+    this.activeArchivesRef = null;
+    this.activeArchivesCb = null;
+    this.hasAttachedRoomListeners = false;
     this.initStorage();
+  }
+
+  /**
+   * Deduplicate a list of archives using game fingerprints, keeping the most
+   * detailed and canonical record.
+   */
+  deduplicateArchives(list) {
+    if (!Array.isArray(list)) return [];
+    const fpMap = new Map();
+
+    list.forEach(game => {
+      if (!game) return;
+      const fp = getGameFingerprint(game);
+      if (!fp) return;
+
+      if (!fpMap.has(fp)) {
+        fpMap.set(fp, game);
+      } else {
+        const existing = fpMap.get(fp);
+        // Prefer more detailed reason / status if one is generic
+        const preferIncoming =
+          (existing.reason === 'Completed before Reset' || existing.reason === 'Manual Save') &&
+          (game.reason && game.reason !== 'Completed before Reset' && game.reason !== 'Manual Save');
+
+        if (preferIncoming) {
+          fpMap.set(fp, { ...existing, ...game, id: existing.id || game.id });
+        }
+      }
+    });
+
+    return Array.from(fpMap.values()).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
   }
 
   initStorage() {
     try {
       const stored = localStorage.getItem('communal_game_archives');
       if (stored) {
-        this.archives = JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        this.archives = this.deduplicateArchives(parsed);
       }
     } catch (e) {
       this.archives = [];
@@ -25,6 +101,7 @@ export class GameArchiveManager {
   }
 
   setRoom(roomId) {
+    if (this.currentRoomId === roomId && this.hasAttachedRoomListeners) return;
     this.currentRoomId = roomId;
     this.listenToRoomArchives();
   }
@@ -32,46 +109,32 @@ export class GameArchiveManager {
   listenToRoomArchives() {
     if (!this.db || !this.currentRoomId) return;
 
-    // Listen on rooms/${roomId}/archives
-    const archivesRef = this.db.ref(`rooms/${this.currentRoomId}/archives`);
-    archivesRef.on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (data && typeof data === 'object') {
-        const remoteList = Object.values(data);
-        // Merge with local archives without duplicates
-        const map = new Map();
-        this.archives.forEach(g => map.set(g.id, g));
-        remoteList.forEach(g => {
-          if (g && g.id) map.set(g.id, g);
-        });
-        this.archives = Array.from(map.values()).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
-        this.persistLocal();
-        this.notify();
+    // Detach previous room listener if attached
+    if (this.activeArchivesRef && this.activeArchivesCb) {
+      if (typeof this.activeArchivesRef.off === 'function') {
+        this.activeArchivesRef.off('value', this.activeArchivesCb);
       }
-    });
+    }
 
-    // Also listen on global game_history
-    const historyRef = this.db.ref('game_history');
-    historyRef.on('value', (snapshot) => {
+    // Listen on rooms/${roomId}/archives
+    this.activeArchivesRef = this.db.ref(`rooms/${this.currentRoomId}/archives`);
+    this.activeArchivesCb = (snapshot) => {
       const data = snapshot.val();
       if (data && typeof data === 'object') {
         const remoteList = Object.values(data);
-        const map = new Map();
-        this.archives.forEach(g => map.set(g.id, g));
-        remoteList.forEach(g => {
-          if (g && g.id && (!g.roomId || g.roomId === this.currentRoomId)) {
-            map.set(g.id, g);
-          }
-        });
-        this.archives = Array.from(map.values()).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+        const merged = [...this.archives, ...remoteList];
+        this.archives = this.deduplicateArchives(merged);
         this.persistLocal();
         this.notify();
       }
-    });
+    };
+    this.activeArchivesRef.on('value', this.activeArchivesCb);
+    this.hasAttachedRoomListeners = true;
   }
 
   persistLocal() {
     try {
+      this.archives = this.deduplicateArchives(this.archives);
       localStorage.setItem('communal_game_archives', JSON.stringify(this.archives.slice(0, 50)));
     } catch (e) {}
   }
@@ -90,8 +153,9 @@ export class GameArchiveManager {
   async saveGame(record) {
     if (!record || !record.history || record.history.length === 0) return null;
 
-    const gameId = record.id || `game_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    
+    const gameId = record.id || generateDeterministicId(record);
+    const gameFp = getGameFingerprint({ ...record, id: gameId });
+
     // Extract unique player names
     const whitePlayers = [...new Set((record.history || [])
       .filter((m, idx) => m.color === 'w' || m.color === 'red' || idx % 2 === 0)
@@ -119,13 +183,14 @@ export class GameArchiveManager {
       }
     };
 
-    // Save locally
-    const existingIdx = this.archives.findIndex(g => g.id === gameId);
+    // Save locally with deduplication by id and fingerprint
+    const existingIdx = this.archives.findIndex(g => g.id === gameId || getGameFingerprint(g) === gameFp);
     if (existingIdx >= 0) {
-      this.archives[existingIdx] = fullRecord;
+      this.archives[existingIdx] = { ...this.archives[existingIdx], ...fullRecord, id: gameId };
     } else {
       this.archives.unshift(fullRecord);
     }
+    this.archives = this.deduplicateArchives(this.archives);
     this.persistLocal();
     this.notify();
 
@@ -146,7 +211,8 @@ export class GameArchiveManager {
   }
 
   getPastGames() {
-    return this.archives.filter(g => !g.roomId || g.roomId === this.currentRoomId);
+    const list = this.archives.filter(g => !g.roomId || g.roomId === this.currentRoomId);
+    return this.deduplicateArchives(list);
   }
 
   getGameById(gameId) {
@@ -195,7 +261,12 @@ export class GameArchiveManager {
     const wrapper = document.createElement('div');
     wrapper.className = 'archive-list-wrapper';
 
-    games.forEach((game, idx) => {
+    const seenFp = new Set();
+    games.forEach((game) => {
+      const fp = getGameFingerprint(game);
+      if (seenFp.has(fp)) return;
+      seenFp.add(fp);
+
       const card = document.createElement('div');
       card.className = 'archive-game-card';
 
@@ -275,3 +346,4 @@ export class GameArchiveManager {
     containerEl.appendChild(wrapper);
   }
 }
+
