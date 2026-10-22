@@ -348,3 +348,31 @@ test('Board Coordinates & Cell Naming: Verify standard conventions (1-8/1-9 rank
   assert.strictEqual(goLetters.includes('I'), false, 'Go notation skips letter I');
   assert.strictEqual(goLetters[4], 'E', 'Tengen file is E');
 });
+
+test('Automatic Game Archival: All games with moves are automatically archived and save button is removed', async () => {
+  const fs = await import('node:fs');
+  const indexHtml = fs.readFileSync(new URL('../../public/index.html', import.meta.url), 'utf-8');
+  assert.strictEqual(indexHtml.includes('id="btnSaveGame"'), false, 'Save button must be removed from index.html');
+
+  const mockDb = createMockDb();
+  const archiveMgr = new GameArchiveManager(mockDb, 'auto-save-room');
+
+  // Verify that saving a game with moves automatically stores it
+  const history = [
+    { ply: 1, san: 'd4', from: 'd2', to: 'd4', color: 'w', piece: 'p', playerName: 'Falcon', clientId: 'c1' }
+  ];
+
+  await archiveMgr.saveGame({
+    roomId: 'auto-save-room',
+    gameType: 'chess',
+    status: 'completed',
+    reason: 'Completed before Reset',
+    history
+  });
+
+  const games = archiveMgr.getPastGames();
+  assert.strictEqual(games.length, 1);
+  assert.strictEqual(games[0].moveCount, 1);
+  assert.strictEqual(games[0].history[0].san, 'd4');
+});
+

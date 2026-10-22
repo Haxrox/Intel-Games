@@ -134,19 +134,6 @@ export class CommunalApp {
       });
     }
 
-    const saveBtn = document.getElementById('btnSaveGame');
-    if (saveBtn) {
-      saveBtn.addEventListener('click', async () => {
-        if (!this.gameState || !this.gameState.history || this.gameState.history.length === 0) {
-          alert('No moves have been played in this game yet.');
-          return;
-        }
-        await this.archiveCurrentGame('Manual Save');
-        alert('Match successfully saved to Past Games!');
-        this.switchTab('tab-archives');
-      });
-    }
-
     const themeBtn = document.getElementById('btnToggleTheme');
     if (themeBtn) {
       this.initTheme();
@@ -213,6 +200,15 @@ export class CommunalApp {
   }
 
   switchRoom(roomId, gameType = 'chess') {
+    // Automatically save any active in-progress game before switching rooms
+    if (this.archiveMgr && this.gameState && this.gameState.history && this.gameState.history.length >= 1) {
+      const prevSig = this.getMatchSignature(this.gameState);
+      if (prevSig && !this.archivedMatchSignatures.has(prevSig)) {
+        this.archivedMatchSignatures.add(prevSig);
+        this.archiveCurrentGame('Saved before Room Switch');
+      }
+    }
+
     this.currentRoomId = roomId;
     this.gameType = gameType;
     this.hasSetInitialOrientation = false;
@@ -308,13 +304,26 @@ export class CommunalApp {
       return;
     }
 
-    // Auto-archive completed games (deduplicated by match signature)
-    if (state.status === 'checkmate' || state.status === 'stalemate' || state.status === 'draw' || state.status === 'game_over' || state.status === 'resigned') {
+    // Auto-archive all completed games (deduplicated by match signature)
+    const isFinished = state.status === 'checkmate' ||
+                       state.status === 'stalemate' ||
+                       state.status === 'draw' ||
+                       state.status === 'game_over' ||
+                       state.status === 'resigned' ||
+                       state.status === 'threefold' ||
+                       state.status === 'insufficient_material' ||
+                       Boolean(state.winner);
+
+    if (isFinished && state.history && state.history.length >= 1) {
       const sig = this.getMatchSignature(state);
-      if (sig && state.history && state.history.length >= 1 && !this.archivedMatchSignatures.has(sig)) {
+      if (sig && !this.archivedMatchSignatures.has(sig)) {
         this.archivedMatchSignatures.add(sig);
         state._isArchived = true;
-        const outcome = state.reason || (state.status === 'checkmate' ? 'Checkmate' : (state.status === 'resigned' ? 'Resignation' : 'Draw'));
+        const outcome = state.reason || (state.status === 'checkmate' ? 'Checkmate' :
+                                         state.status === 'resigned' ? 'Resignation' :
+                                         state.status === 'threefold' ? 'Draw by Threefold Repetition' :
+                                         state.status === 'insufficient_material' ? 'Draw by Insufficient Material' :
+                                         (state.winner ? `${state.winner === 'w' ? 'White' : 'Black'} Victory` : 'Draw'));
         this.archiveCurrentGame(outcome);
       }
     }
@@ -819,7 +828,7 @@ export class CommunalApp {
   async resetRoomGame() {
     if (!this.engine) return;
     this.hasSetInitialOrientation = false;
-    if (this.gameState && this.gameState.history && this.gameState.history.length >= 2) {
+    if (this.gameState && this.gameState.history && this.gameState.history.length >= 1) {
       const sig = this.getMatchSignature(this.gameState);
       if (sig && !this.archivedMatchSignatures.has(sig)) {
         this.archivedMatchSignatures.add(sig);
@@ -984,6 +993,18 @@ export class CommunalApp {
         roomSelect.appendChild(opt);
 
         this.switchRoom(cleanId, gameType);
+      });
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => {
+        if (this.archiveMgr && this.gameState && this.gameState.history && this.gameState.history.length >= 1) {
+          const sig = this.getMatchSignature(this.gameState);
+          if (sig && !this.archivedMatchSignatures.has(sig)) {
+            this.archivedMatchSignatures.add(sig);
+            this.archiveCurrentGame('Saved on Exit');
+          }
+        }
       });
     }
   }
