@@ -26,12 +26,12 @@
   "dependencies": {
     "chess.js": "^1.0.0-beta.6",
     "dotenv": "^16.4.5",
-    "firebase-admin": "^12.0.0",
+    "firebase-admin": "^14.5.0",
     "stockfish": "^16.0.0",
     "ws": "^8.16.0"
   },
   "devDependencies": {
-    "firebase-tools": "^13.35.1",
+    "firebase-tools": "^15.34.0",
     "serve": "^14.2.1"
   }
 }
