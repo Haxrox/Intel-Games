@@ -1,13 +1,15 @@
 name: Run Tests & Rule Checks
 
 on:
-  push:
-    branches: [ "**" ]
   pull_request:
     branches: [ "**" ]
+  push:
+    branches-ignore:
+      - main
 
 jobs:
   test:
+    name: Run Test Suite
     runs-on: ubuntu-latest
 
     steps:
