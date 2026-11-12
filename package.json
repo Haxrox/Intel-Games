@@ -25,13 +25,13 @@
   "license": "MIT",
   "dependencies": {
     "chess.js": "^1.0.0-beta.6",
-    "dotenv": "^16.4.5",
+    "dotenv": "^18.0.10",
     "firebase-admin": "^12.0.0",
-    "stockfish": "^16.0.0",
-    "ws": "^8.16.0"
+    "stockfish": "^19.0.1",
+    "ws": "^8.22.2"
   },
   "devDependencies": {
     "firebase-tools": "^13.35.1",
-    "serve": "^14.2.1"
+    "serve": "^14.2.7"
   }
 }
